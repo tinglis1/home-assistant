@@ -2,7 +2,7 @@
 Support for bom.gov.au current condition weather service.
 
 For more details about this platform, please refer to the documentation at
-https://home-assistant.io/components/sensor.bom_weather_current/
+https://home-assistant.io/components/sensor.bom/
 """
 
 import datetime
