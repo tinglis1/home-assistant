@@ -1,28 +1,28 @@
-"""The tests for the Command line sensor platform."""
-import unittest
+"""The tests for the IMAP email content sensor platform."""
+from collections import deque
 import email
-import datetime
-
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+import datetime
 from threading import Event
+import unittest
 
+from homeassistant.helpers.template import Template
 from homeassistant.helpers.event import track_state_change
-from collections import deque
-
 from homeassistant.components.sensor import imap_email_content
+
 from tests.common import get_test_home_assistant
 
 
 class FakeEMailReader:
-    """A test class for sending test emails"""
+    """A test class for sending test emails."""
 
     def __init__(self, messages):
-        """Setup the fake email reader"""
+        """Setup the fake email reader."""
         self._messages = messages
 
     def connect(self):
-        """Always connected."""
+        """Stay always Connected."""
         return True
 
     def read_next(self):
@@ -33,7 +33,7 @@ class FakeEMailReader:
 
 
 class EmailContentSensor(unittest.TestCase):
-    """Test the Command line sensor."""
+    """Test the IMAP email content sensor."""
 
     def setUp(self):
         """Setup things to be run when tests are started."""
@@ -93,7 +93,7 @@ class EmailContentSensor(unittest.TestCase):
         self.assertEqual("Test Message", sensor.state)
 
     def test_multi_part_only_html(self):
-        """Test multi part emails with only html."""
+        """Test multi part emails with only HTML."""
         msg = MIMEMultipart('alternative')
         msg['Subject'] = "Link"
         msg['From'] = "sender@test.com"
@@ -218,7 +218,8 @@ class EmailContentSensor(unittest.TestCase):
             FakeEMailReader(deque([test_message])),
             "test_emails_sensor",
             ["sender@test.com"],
-            "{{ subject }} from {{ from }} with message {{ body }}")
+            Template("{{ subject }} from {{ from }} with message {{ body }}",
+                     self.hass))
 
         sensor.entity_id = "sensor.emailtest"
         sensor.update()
