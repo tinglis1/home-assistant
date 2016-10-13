@@ -13,7 +13,6 @@ from homeassistant.components.climate import (
     ATTR_TEMPERATURE)
 from homeassistant.const import (
     TEMP_CELSIUS, CONF_SCAN_INTERVAL, STATE_ON, STATE_OFF, STATE_UNKNOWN)
-from homeassistant.util.temperature import convert as convert_temperature
 
 DEPENDENCIES = ['nest']
 _LOGGER = logging.getLogger(__name__)
@@ -41,8 +40,19 @@ class NestThermostat(ClimateDevice):
         self.structure = structure
         self.device = device
         self._fan_list = [STATE_ON, STATE_AUTO]
-        self._operation_list = [STATE_HEAT, STATE_COOL, STATE_AUTO,
-                                STATE_OFF]
+
+        # Not all nest devices support cooling and heating remove unused
+        self._operation_list = [STATE_OFF]
+
+        # Add supported nest thermostat features
+        if self.device.can_heat:
+            self._operation_list.append(STATE_HEAT)
+
+        if self.device.can_cool:
+            self._operation_list.append(STATE_COOL)
+
+        if self.device.can_heat and self.device.can_cool:
+            self._operation_list.append(STATE_AUTO)
 
     @property
     def name(self):
@@ -58,18 +68,22 @@ class NestThermostat(ClimateDevice):
                 return location.capitalize() + '(' + name + ')'
 
     @property
-    def unit_of_measurement(self):
+    def temperature_unit(self):
         """Return the unit of measurement."""
         return TEMP_CELSIUS
 
     @property
     def device_state_attributes(self):
         """Return the device specific state attributes."""
-        # Move these to Thermostat Device and make them global
-        return {
-            "humidity": self.device.humidity,
-            "target_humidity": self.device.target_humidity,
-        }
+        if self.device.has_humidifier or self.device.has_dehumidifier:
+            # Move these to Thermostat Device and make them global
+            return {
+                "humidity": self.device.humidity,
+                "target_humidity": self.device.target_humidity,
+            }
+        else:
+            # No way to control humidity not show setting
+            return {}
 
     @property
     def current_temperature(self):
@@ -127,12 +141,9 @@ class NestThermostat(ClimateDevice):
 
     def set_temperature(self, **kwargs):
         """Set new target temperature."""
-        if kwargs.get(ATTR_TARGET_TEMP_LOW) is not None and \
-           kwargs.get(ATTR_TARGET_TEMP_HIGH) is not None:
-            target_temp_high = convert_temperature(kwargs.get(
-                ATTR_TARGET_TEMP_HIGH), self._unit, TEMP_CELSIUS)
-            target_temp_low = convert_temperature(kwargs.get(
-                ATTR_TARGET_TEMP_LOW), self._unit, TEMP_CELSIUS)
+        target_temp_low = kwargs.get(ATTR_TARGET_TEMP_LOW)
+        target_temp_high = kwargs.get(ATTR_TARGET_TEMP_HIGH)
+        if target_temp_low is not None and target_temp_high is not None:
 
             if self.device.mode == 'range':
                 temp = (target_temp_low, target_temp_high)
@@ -168,7 +179,12 @@ class NestThermostat(ClimateDevice):
     @property
     def current_fan_mode(self):
         """Return whether the fan is on."""
-        return STATE_ON if self.device.fan else STATE_AUTO
+        if self.device.has_fan:
+            # Return whether the fan is on
+            return STATE_ON if self.device.fan else STATE_AUTO
+        else:
+            # No Fan available so disable slider
+            return None
 
     @property
     def fan_list(self):

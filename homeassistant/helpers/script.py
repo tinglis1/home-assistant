@@ -51,6 +51,7 @@ class Script():
                               in self.sequence)
         self._async_unsub_delay_listener = None
         self._template_cache = {}
+        self._config_cache = {}
 
     @property
     def is_running(self) -> bool:
@@ -66,7 +67,7 @@ class Script():
     def async_run(self, variables: Optional[Sequence]=None) -> None:
         """Run script.
 
-        Returns a coroutine.
+        This method is a coroutine.
         """
         if self._cur == -1:
             self._log('Running script')
@@ -85,7 +86,7 @@ class Script():
                 def script_delay(now):
                     """Called after delay is done."""
                     self._async_unsub_delay_listener = None
-                    yield from self.async_run(variables)
+                    self.hass.loop.create_task(self.async_run(variables))
 
                 delay = action[CONF_DELAY]
 
@@ -100,7 +101,8 @@ class Script():
                         self.hass, script_delay,
                         date_util.utcnow() + delay)
                 self._cur = cur + 1
-                self._trigger_change_listener()
+                if self._change_listener:
+                    self.hass.async_add_job(self._change_listener)
                 return
 
             elif CONF_CONDITION in action:
@@ -115,7 +117,8 @@ class Script():
 
         self._cur = -1
         self.last_action = None
-        self._trigger_change_listener()
+        if self._change_listener:
+            self.hass.async_add_job(self._change_listener)
 
     def stop(self) -> None:
         """Stop running script."""
@@ -128,11 +131,15 @@ class Script():
 
         self._cur = -1
         self._async_remove_listener()
-        self._trigger_change_listener()
+        if self._change_listener:
+            self.hass.async_add_job(self._change_listener)
 
     @asyncio.coroutine
     def _async_call_service(self, action, variables):
-        """Call the service specified in the action."""
+        """Call the service specified in the action.
+
+        This method is a coroutine.
+        """
         self.last_action = action.get(CONF_ALIAS, 'call service')
         self._log("Executing step %s" % self.last_action)
         yield from service.async_call_from_config(
@@ -147,9 +154,14 @@ class Script():
 
     def _async_check_condition(self, action, variables):
         """Test if condition is matching."""
+        config_cache_key = frozenset((k, str(v)) for k, v in action.items())
+        config = self._config_cache.get(config_cache_key)
+        if not config:
+            config = condition.async_from_config(action, False)
+            self._config_cache[config_cache_key] = config
+
         self.last_action = action.get(CONF_ALIAS, action[CONF_CONDITION])
-        check = condition.async_from_config(action, False)(
-            self.hass, variables)
+        check = config(self.hass, variables)
         self._log("Test condition {}: {}".format(self.last_action, check))
         return check
 
@@ -165,10 +177,3 @@ class Script():
             msg = "Script {}: {}".format(self.name, msg)
 
         _LOGGER.info(msg)
-
-    def _trigger_change_listener(self):
-        """Trigger the change listener."""
-        if not self._change_listener:
-            return
-
-        self.hass.async_add_job(self._change_listener)

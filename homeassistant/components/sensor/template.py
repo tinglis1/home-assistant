@@ -9,6 +9,7 @@ import logging
 
 import voluptuous as vol
 
+from homeassistant.core import callback
 from homeassistant.components.sensor import ENTITY_ID_FORMAT, PLATFORM_SCHEMA
 from homeassistant.const import (
     ATTR_FRIENDLY_NAME, ATTR_UNIT_OF_MEASUREMENT, CONF_VALUE_TEMPLATE,
@@ -79,10 +80,10 @@ class SensorTemplate(Entity):
 
         self.update()
 
-        @asyncio.coroutine
+        @callback
         def template_sensor_state_listener(entity, old_state, new_state):
             """Called when the target device changes state."""
-            yield from self.async_update_ha_state(True)
+            hass.loop.create_task(self.async_update_ha_state(True))
 
         track_state_change(hass, entity_ids, template_sensor_state_listener)
 

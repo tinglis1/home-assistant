@@ -25,6 +25,8 @@ from homeassistant.components.light import (
 from homeassistant.components.http import (
     HomeAssistantView, HomeAssistantWSGI
 )
+# pylint: disable=unused-import
+from homeassistant.components.http import REQUIREMENTS   # noqa
 import homeassistant.helpers.config_validation as cv
 
 DOMAIN = 'emulated_hue'
@@ -75,7 +77,7 @@ def setup(hass, yaml_config):
         ssl_certificate=None,
         ssl_key=None,
         cors_origins=[],
-        approved_ips=[]
+        trusted_networks=[]
     )
 
     server.register_view(DescriptionXmlView(hass, config))

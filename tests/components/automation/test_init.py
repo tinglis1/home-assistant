@@ -8,19 +8,22 @@ from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.exceptions import HomeAssistantError
 import homeassistant.util.dt as dt_util
 
-from tests.common import get_test_home_assistant
+from tests.common import get_test_home_assistant, assert_setup_component
 
 
 class TestAutomation(unittest.TestCase):
     """Test the event automation."""
 
-    def setUp(self):  # pylint: disable=invalid-name
+    # pylint: disable=invalid-name
+
+    def setUp(self):
         """Setup things to be run when tests are started."""
         self.hass = get_test_home_assistant()
         self.hass.config.components.append('group')
         self.calls = []
 
         def record_call(service):
+            """Record call."""
             self.calls.append(service)
 
         self.hass.services.register('test', 'automation', record_call)
@@ -31,18 +34,19 @@ class TestAutomation(unittest.TestCase):
 
     def test_service_data_not_a_dict(self):
         """Test service data not dict."""
-        assert not setup_component(self.hass, automation.DOMAIN, {
-            automation.DOMAIN: {
-                'trigger': {
-                    'platform': 'event',
-                    'event_type': 'test_event',
-                },
-                'action': {
-                    'service': 'test.automation',
-                    'data': 100,
+        with assert_setup_component(0):
+            assert not setup_component(self.hass, automation.DOMAIN, {
+                automation.DOMAIN: {
+                    'trigger': {
+                        'platform': 'event',
+                        'event_type': 'test_event',
+                    },
+                    'action': {
+                        'service': 'test.automation',
+                        'data': 100,
+                    }
                 }
-            }
-        })
+            })
 
     def test_service_specify_data(self):
         """Test service data."""
@@ -70,10 +74,14 @@ class TestAutomation(unittest.TestCase):
             self.hass.bus.fire('test_event')
             self.hass.block_till_done()
         assert len(self.calls) == 1
-        assert 'event - test_event' == self.calls[0].data['some']
+        assert self.calls[0].data['some'] == 'event - test_event'
         state = self.hass.states.get('automation.hello')
         assert state is not None
         assert state.attributes.get('last_triggered') == time
+
+        state = self.hass.states.get('group.all_automations')
+        assert state is not None
+        assert state.attributes.get('entity_id') == ('automation.hello',)
 
     def test_service_specify_entity_id(self):
         """Test service data."""
@@ -95,6 +103,46 @@ class TestAutomation(unittest.TestCase):
         self.assertEqual(1, len(self.calls))
         self.assertEqual(['hello.world'],
                          self.calls[0].data.get(ATTR_ENTITY_ID))
+
+    def test_service_initial_value_off(self):
+        """Test initial value off."""
+        entity_id = 'automation.hello'
+
+        assert setup_component(self.hass, automation.DOMAIN, {
+            automation.DOMAIN: {
+                'alias': 'hello',
+                'initial_state': 'off',
+                'trigger': {
+                    'platform': 'event',
+                    'event_type': 'test_event',
+                },
+                'action': {
+                    'service': 'test.automation',
+                    'entity_id': ['hello.world', 'hello.world2']
+                }
+            }
+        })
+        assert not automation.is_on(self.hass, entity_id)
+
+    def test_service_initial_value_on(self):
+        """Test initial value on."""
+        entity_id = 'automation.hello'
+
+        assert setup_component(self.hass, automation.DOMAIN, {
+            automation.DOMAIN: {
+                'alias': 'hello',
+                'initial_state': 'on',
+                'trigger': {
+                    'platform': 'event',
+                    'event_type': 'test_event',
+                },
+                'action': {
+                    'service': 'test.automation',
+                    'entity_id': ['hello.world', 'hello.world2']
+                }
+            }
+        })
+        assert automation.is_on(self.hass, entity_id)
 
     def test_service_specify_entity_id_list(self):
         """Test service data."""
@@ -143,6 +191,35 @@ class TestAutomation(unittest.TestCase):
         self.hass.states.set('test.entity', 'hello')
         self.hass.block_till_done()
         self.assertEqual(2, len(self.calls))
+
+    def test_trigger_service_ignoring_condition(self):
+        """Test triggers."""
+        assert setup_component(self.hass, automation.DOMAIN, {
+            automation.DOMAIN: {
+                'trigger': [
+                    {
+                        'platform': 'event',
+                        'event_type': 'test_event',
+                    },
+                ],
+                'condition': {
+                    'condition': 'state',
+                    'entity_id': 'non.existing',
+                    'state': 'beer',
+                },
+                'action': {
+                    'service': 'test.automation',
+                }
+            }
+        })
+
+        self.hass.bus.fire('test_event')
+        self.hass.block_till_done()
+        assert len(self.calls) == 0
+
+        self.hass.services.call('automation', 'trigger', blocking=True)
+        self.hass.block_till_done()
+        assert len(self.calls) == 1
 
     def test_two_conditions_with_and(self):
         """Test two and conditions."""
@@ -348,6 +425,8 @@ class TestAutomation(unittest.TestCase):
 
         automation.reload(self.hass)
         self.hass.block_till_done()
+        # De-flake ?!
+        self.hass.block_till_done()
 
         assert self.hass.states.get('automation.hello') is None
         assert self.hass.states.get('automation.bye') is not None
@@ -369,21 +448,22 @@ class TestAutomation(unittest.TestCase):
     })
     def test_reload_config_when_invalid_config(self, mock_load_yaml):
         """Test the reload config service handling invalid config."""
-        assert setup_component(self.hass, automation.DOMAIN, {
-            automation.DOMAIN: {
-                'alias': 'hello',
-                'trigger': {
-                    'platform': 'event',
-                    'event_type': 'test_event',
-                },
-                'action': {
-                    'service': 'test.automation',
-                    'data_template': {
-                        'event': '{{ trigger.event.event_type }}'
+        with assert_setup_component(1):
+            assert setup_component(self.hass, automation.DOMAIN, {
+                automation.DOMAIN: {
+                    'alias': 'hello',
+                    'trigger': {
+                        'platform': 'event',
+                        'event_type': 'test_event',
+                    },
+                    'action': {
+                        'service': 'test.automation',
+                        'data_template': {
+                            'event': '{{ trigger.event.event_type }}'
+                        }
                     }
                 }
-            }
-        })
+            })
         assert self.hass.states.get('automation.hello') is not None
 
         self.hass.bus.fire('test_event')
@@ -395,11 +475,11 @@ class TestAutomation(unittest.TestCase):
         automation.reload(self.hass)
         self.hass.block_till_done()
 
-        assert self.hass.states.get('automation.hello') is not None
+        assert self.hass.states.get('automation.hello') is None
 
         self.hass.bus.fire('test_event')
         self.hass.block_till_done()
-        assert len(self.calls) == 2
+        assert len(self.calls) == 1
 
     def test_reload_config_handles_load_fails(self):
         """Test the reload config service."""

@@ -8,7 +8,8 @@ https://home-assistant.io/components/climate.zwave/
 # pylint: disable=import-error
 import logging
 from homeassistant.components.climate import DOMAIN
-from homeassistant.components.climate import ClimateDevice
+from homeassistant.components.climate import (
+    ClimateDevice, ATTR_OPERATION_MODE)
 from homeassistant.components.zwave import ZWaveDeviceEntity
 from homeassistant.components import zwave
 from homeassistant.const import (
@@ -164,6 +165,12 @@ class ZWaveClimate(ZWaveDeviceEntity, ClimateDevice):
         for value in (self._node.get_values(
                 class_id=zwave.const.COMMAND_CLASS_THERMOSTAT_SETPOINT)
                       .values()):
+            if value.data == 0:
+                _LOGGER.debug("Setpoint is 0, setting default to "
+                              "current_temperature=%s",
+                              self._current_temperature)
+                self._target_temperature = int(self._current_temperature)
+                break
             if self.current_operation is not None and \
                self.current_operation != 'Off':
                 if self._index_operation != value.index:
@@ -202,7 +209,7 @@ class ZWaveClimate(ZWaveDeviceEntity, ClimateDevice):
         return self._swing_list
 
     @property
-    def unit_of_measurement(self):
+    def temperature_unit(self):
         """Return the unit of measurement."""
         if self._unit == 'C':
             return TEMP_CELSIUS
@@ -237,10 +244,20 @@ class ZWaveClimate(ZWaveDeviceEntity, ClimateDevice):
             temperature = kwargs.get(ATTR_TEMPERATURE)
         else:
             return
+        operation_mode = kwargs.get(ATTR_OPERATION_MODE)
+        _LOGGER.debug("set_temperature operation_mode=%s", operation_mode)
 
         for value in (self._node.get_values(
                 class_id=zwave.const.COMMAND_CLASS_THERMOSTAT_SETPOINT)
                       .values()):
+            if operation_mode is not None:
+                setpoint_mode = SET_TEMP_TO_INDEX.get(operation_mode)
+                if value.index != setpoint_mode:
+                    continue
+                _LOGGER.debug("setpoint_mode=%s", setpoint_mode)
+                value.data = temperature
+                break
+
             if self.current_operation is not None:
                 if self._hrt4_zw and self.current_operation == 'Off':
                     # HRT4-ZW can change setpoint when off.

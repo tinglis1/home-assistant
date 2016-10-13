@@ -1,6 +1,6 @@
 """The tests for the Flux switch platform."""
-import unittest
 from datetime import timedelta
+import unittest
 from unittest.mock import patch
 
 from homeassistant.bootstrap import setup_component
@@ -8,8 +8,10 @@ from homeassistant.components import switch, light
 from homeassistant.const import CONF_PLATFORM, STATE_ON, SERVICE_TURN_ON
 import homeassistant.loader as loader
 import homeassistant.util.dt as dt_util
-from tests.common import get_test_home_assistant
-from tests.common import fire_time_changed, mock_service
+
+from tests.common import (
+    assert_setup_component, get_test_home_assistant, fire_time_changed,
+    mock_service)
 
 
 class TestSwitchFlux(unittest.TestCase):
@@ -50,21 +52,23 @@ class TestSwitchFlux(unittest.TestCase):
 
     def test_valid_config_no_name(self):
         """Test configuration."""
-        assert setup_component(self.hass, 'switch', {
-            'switch': {
-                'platform': 'flux',
-                'lights': ['light.desk', 'light.lamp']
-            }
-        })
+        with assert_setup_component(1, 'switch'):
+            assert setup_component(self.hass, 'switch', {
+                'switch': {
+                    'platform': 'flux',
+                    'lights': ['light.desk', 'light.lamp']
+                }
+            })
 
     def test_invalid_config_no_lights(self):
         """Test configuration."""
-        assert not setup_component(self.hass, 'switch', {
-            'switch': {
-                'platform': 'flux',
-                'name': 'flux'
-            }
-        })
+        with assert_setup_component(0, 'switch'):
+            assert setup_component(self.hass, 'switch', {
+                'switch': {
+                    'platform': 'flux',
+                    'name': 'flux'
+                }
+            })
 
     def test_flux_when_switch_is_off(self):
         """Test the flux switch when it is off."""
@@ -532,46 +536,3 @@ class TestSwitchFlux(unittest.TestCase):
                     self.hass.block_till_done()
         call = turn_on_calls[-1]
         self.assertEqual(call.data[light.ATTR_COLOR_TEMP], 269)
-
-    def test_flux_with_kelvin(self):
-        """Test the flux switch´s mode kelvin."""
-        platform = loader.get_component('light.test')
-        platform.init()
-        self.assertTrue(
-            setup_component(self.hass, light.DOMAIN,
-                            {light.DOMAIN: {CONF_PLATFORM: 'test'}}))
-
-        dev1 = platform.DEVICES[0]
-
-        # Verify initial state of light
-        state = self.hass.states.get(dev1.entity_id)
-        self.assertEqual(STATE_ON, state.state)
-        self.assertIsNone(state.attributes.get('color_temp'))
-
-        test_time = dt_util.now().replace(hour=8, minute=30, second=0)
-        sunset_time = test_time.replace(hour=17, minute=0, second=0)
-        sunrise_time = test_time.replace(hour=5,
-                                         minute=0,
-                                         second=0) + timedelta(days=1)
-
-        with patch('homeassistant.util.dt.now', return_value=test_time):
-            with patch('homeassistant.components.sun.next_rising',
-                       return_value=sunrise_time):
-                with patch('homeassistant.components.sun.next_setting',
-                           return_value=sunset_time):
-                    assert setup_component(self.hass, switch.DOMAIN, {
-                        switch.DOMAIN: {
-                            'platform': 'flux',
-                            'name': 'flux',
-                            'lights': [dev1.entity_id],
-                            'mode': 'kelvin'
-                        }
-                    })
-                    turn_on_calls = mock_service(
-                        self.hass, light.DOMAIN, SERVICE_TURN_ON)
-                    switch.turn_on(self.hass, 'switch.flux')
-                    self.hass.block_till_done()
-                    fire_time_changed(self.hass, test_time)
-                    self.hass.block_till_done()
-        call = turn_on_calls[-1]
-        self.assertEqual(call.data[light.ATTR_COLOR_TEMP], 3708)

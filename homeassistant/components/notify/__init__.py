@@ -42,7 +42,7 @@ PLATFORM_SCHEMA = vol.Schema({
 NOTIFY_SERVICE_SCHEMA = vol.Schema({
     vol.Required(ATTR_MESSAGE): cv.template,
     vol.Optional(ATTR_TITLE): cv.template,
-    vol.Optional(ATTR_TARGET): cv.string,
+    vol.Optional(ATTR_TARGET): vol.All(cv.ensure_list, [cv.string]),
     vol.Optional(ATTR_DATA): dict,
 })
 
@@ -100,8 +100,8 @@ def setup(hass, config):
                 kwargs[ATTR_TITLE] = title.render()
 
             if targets.get(call.service) is not None:
-                kwargs[ATTR_TARGET] = targets[call.service]
-            else:
+                kwargs[ATTR_TARGET] = [targets[call.service]]
+            elif call.data.get(ATTR_TARGET) is not None:
                 kwargs[ATTR_TARGET] = call.data.get(ATTR_TARGET)
 
             message.hass = hass
